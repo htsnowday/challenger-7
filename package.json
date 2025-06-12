@@ -1,0 +1,9 @@
+{
+  "name": "vercel-openai-chat",
+  "version": "1.0.0",
+  "type": "module",
+  "engines": { "node": ">=18.x" },
+  "dependencies": {
+    "openai": "^4.0.0"
+  }
+}
