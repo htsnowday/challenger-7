@@ -1,27 +1,25 @@
-import { OpenAI } from "openai";
+import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const VECTOR_STORE_ID = process.env.VECTOR_STORE_ID;  // e.g. "vs_XXXXXXXX"
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).end("Method Not Allowed");
-  }
-  const { input } = req.body;
-  if (!input || typeof input !== "string") {
-    return res.status(400).json({ error: "Missing `input` in request body." });
-  }
   try {
-    const response = await client.responses.create({
-      model: "gpt-4o-mini",
-      instructions: "You are a helpful assistant.",
-      input,
+    const userMessage = req.body.message;  // assuming the request sends the user's prompt
+    const response = await openai.responses.create({
+      model: "gpt-4o",  // Orchestrator model that can use tools
+      instructions: "You are a helpful assistant.",  // (optional system role)
+      input: userMessage,
+      tools: [{
+        type: "file_search",
+        vector_store_ids: [ VECTOR_STORE_ID ]
+      }],
+      stream: false  // set true for streaming SSE if your setup supports it
     });
-    return res.status(200).json({ output: response.output_text });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: err.message || "Internal Error" });
+    // Send back the assistant's answer text
+    res.status(200).json({ answer: response.output_text });
+  } catch (error) {
+    console.error("Error from OpenAI:", error);
+    res.status(500).json({ error: "Failed to generate response" });
   }
 }
