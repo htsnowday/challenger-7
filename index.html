@@ -8,6 +8,7 @@
     textarea { width: 100%; height: 80px; margin-bottom: .5rem; }
     pre { background: #f4f4f4; padding: 1rem; white-space: pre-wrap; }
     button { padding: .5rem 1rem; }
+    .error { color: #b00; }
   </style>
 </head>
 <body>
@@ -18,23 +19,40 @@
   <pre id="responseArea">–</pre>
 
   <script>
-    document.getElementById("sendBtn").onclick = async () => {
+    const responseArea = document.getElementById("responseArea");
+    const sendBtn = document.getElementById("sendBtn");
+
+    sendBtn.addEventListener("click", async () => {
       const input = document.getElementById("userInput").value.trim();
       if (!input) return;
-      document.getElementById("responseArea").textContent = "…thinking…";
+
+      // reset and show loading
+      responseArea.textContent = "…thinking…";
+      responseArea.classList.remove("error");
 
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ input })
+          body: JSON.stringify({ message: input })
         });
-        const { output, error } = await res.json();
-        document.getElementById("responseArea").textContent = error || output;
-      } catch {
-        document.getElementById("responseArea").textContent = "Network error";
+
+        // If the HTTP status is not in the 200–299 range, grab the error message
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || res.statusText);
+        }
+
+        // Successful; show the assistant's answer
+        const { answer } = await res.json();
+        responseArea.textContent = answer;
+
+      } catch (err) {
+        // Show the real error message
+        responseArea.textContent = err.message;
+        responseArea.classList.add("error");
       }
-    };
+    });
   </script>
 </body>
 </html>
