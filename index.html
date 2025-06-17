@@ -2,31 +2,73 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>OpenAI on Vercel</title>
+  <title>Chat + File Upload</title>
   <style>
     body { font-family: sans-serif; max-width: 600px; margin: 2rem auto; }
     textarea { width: 100%; height: 80px; margin-bottom: .5rem; }
     pre { background: #f4f4f4; padding: 1rem; white-space: pre-wrap; }
-    button { padding: .5rem 1rem; }
+    input, button { margin-right: .5rem; }
     .error { color: #b00; }
+    .file-list { margin-top: .5rem; }
   </style>
 </head>
 <body>
-  <h1>Chat with OpenAI</h1>
+  <h1>Chat with File Upload</h1>
+
+  <!-- File upload UI -->
+  <input type="file" id="fileInput" />
+  <button id="uploadBtn">Upload</button>
+  <div class="file-list" id="fileList">No files uploaded.</div>
+
+  <!-- Chat UI -->
   <textarea id="userInput" placeholder="Type your message…"></textarea><br/>
   <button id="sendBtn">Send</button>
   <h2>Response:</h2>
   <pre id="responseArea">–</pre>
 
   <script>
+    const fileInput = document.getElementById("fileInput");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const fileListDiv = document.getElementById("fileList");
     const responseArea = document.getElementById("responseArea");
     const sendBtn = document.getElementById("sendBtn");
 
-    sendBtn.addEventListener("click", async () => {
-      const input = document.getElementById("userInput").value.trim();
-      if (!input) return;
+    // Keep track of uploaded file IDs
+    const fileIds = [];
 
-      // reset and show loading
+    uploadBtn.onclick = () => {
+      const file = fileInput.files[0];
+      if (!file) return alert("Select a file first.");
+
+      // Read file as base64
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = reader.result.split(",")[1];
+        try {
+          const res = await fetch("/api/upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              filename: file.name,
+              data: base64
+            })
+          });
+          const { fileId, error } = await res.json();
+          if (error) throw new Error(error);
+          fileIds.push(fileId);
+          fileListDiv.textContent = 
+            `Uploaded: ${file.name} → ${fileId}`;
+        } catch (err) {
+          alert("Upload failed: " + err.message);
+        }
+      };
+      reader.readAsDataURL(file);
+    };
+
+    sendBtn.onclick = async () => {
+      const message = document.getElementById("userInput").value.trim();
+      if (!message) return;
+
       responseArea.textContent = "…thinking…";
       responseArea.classList.remove("error");
 
@@ -34,25 +76,16 @@
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: input })
+          body: JSON.stringify({ message, fileIds })
         });
-
-        // If the HTTP status is not in the 200–299 range, grab the error message
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || res.statusText);
-        }
-
-        // Successful; show the assistant's answer
-        const { answer } = await res.json();
-        responseArea.textContent = answer;
-
+        const payload = await res.json();
+        if (!res.ok) throw new Error(payload.error || res.statusText);
+        responseArea.textContent = payload.answer;
       } catch (err) {
-        // Show the real error message
         responseArea.textContent = err.message;
         responseArea.classList.add("error");
       }
-    });
+    };
   </script>
 </body>
 </html>
