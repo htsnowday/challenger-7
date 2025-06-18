@@ -36,34 +36,29 @@
     // Keep track of uploaded file IDs
     const fileIds = [];
 
-    uploadBtn.onclick = () => {
-      const file = fileInput.files[0];
-      if (!file) return alert("Select a file first.");
+uploadBtn.onclick = () => {
+  const file = fileInput.files[0];
+  if (!file) return alert("Select a file first.");
 
-      // Read file as base64
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64 = reader.result.split(",")[1];
-        try {
-          const res = await fetch("/api/upload", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              filename: file.name,
-              data: base64
-            })
-          });
-          const { fileId, error } = await res.json();
-          if (error) throw new Error(error);
-          fileIds.push(fileId);
-          fileListDiv.textContent = 
-            `Uploaded: ${file.name} → ${fileId}`;
-        } catch (err) {
-          alert("Upload failed: " + err.message);
-        }
-      };
-      reader.readAsDataURL(file);
-    };
+  // Build a FormData payload instead of Base64+JSON
+  const formData = new FormData();
+  formData.append("file", file);
+
+  fetch("/api/upload", {
+    method: "POST",
+    body: formData
+  })
+    .then((res) => res.json())
+    .then((json) => {
+      if (json.error) throw new Error(json.error);
+      fileIds.push(json.fileId);
+      fileList.textContent = `Uploaded: ${file.name}`;
+    })
+    .catch((err) => {
+      alert("Upload failed: " + err.message);
+    });
+};
+
 
     sendBtn.onclick = async () => {
       const message = document.getElementById("userInput").value.trim();
