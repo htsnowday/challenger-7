@@ -1,47 +1,53 @@
 // api/upload.js
 
-// 1) Increase JSON body‐parser limit to, say, 5 MB
+// ① Turn off Next.js’s JSON parser so we can handle multipart
 export const config = {
   api: {
-    bodyParser: {
-      sizeLimit: "10mb",  // <-- allow up to 5 megabytes
-    },
+    bodyParser: false,
   },
 };
 
 import OpenAI from "openai";
+import Busboy from "busboy";
+
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-export default async function handler(req, res) {
+export default function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
-    return res.status(405).end();
+    return res.status(405).end("Method Not Allowed");
   }
 
-  const { filename, data } = req.body;
-  if (!filename || !data) {
-    return res.status(400).json({ error: "filename & data required" });
-  }
+  const busboy = new Busboy({ headers: req.headers });
+  let filename = "";
+  let buffer = Buffer.alloc(0);
 
-  // decode the Base64
-  let buffer;
-  try {
-    buffer = Buffer.from(data, "base64");
-  } catch (e) {
-    console.error("🔴 Base64 decode failed:", e);
-    return res.status(400).json({ error: "Invalid file data" });
-  }
-
-  // call OpenAI to store the file
-  try {
-    const file = await openai.files.create({
-      file: [filename, buffer],
-      purpose: "user_data",
+  // ② Collect file chunks
+  busboy.on("file", (_fieldname, file, info) => {
+    filename = info.filename;
+    file.on("data", (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
     });
-    return res.status(200).json({ fileId: file.id });
-  } catch (err) {
-    console.error("🔴 File upload error:", err);
-    const msg = err.response?.data?.error?.message || err.message;
-    return res.status(500).json({ error: msg });
-  }
+  });
+
+  // ③ When done receiving, call OpenAI
+  busboy.on("finish", async () => {
+    if (!filename || buffer.length === 0) {
+      return res.status(400).json({ error: "No file received" });
+    }
+    try {
+      const fileRes = await openai.files.create({
+        file: [filename, buffer],
+        purpose: "user_data",
+      });
+      return res.status(200).json({ fileId: fileRes.id });
+    } catch (err) {
+      console.error("File upload error:", err);
+      const msg = err.response?.data?.error?.message || err.message;
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // ④ Pipe the incoming request into Busboy
+  req.pipe(busboy);
 }
